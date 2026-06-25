@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Péage Bénin — Abonnement télépéage</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="page">
+  <div class="barrier-stripe"></div>
+  <header class="topbar">
+    <div class="container">
+      <a href="/" class="brand"><span class="brand-badge">⛊</span> Péage Bénin</a>
+      <nav class="topnav" id="navAuth">
+        <a href="/login.html">Se connecter</a>
+        <a href="/register.html" class="btn-primary">S'abonner</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container">
+      <span class="hero-eyebrow">Télépéage automatique</span>
+      <h1 class="hero-title">Passez la barrière<br><span>sans vous arrêter.</span></h1>
+      <p class="hero-sub">
+        Abonnez votre véhicule une fois, payez en Mobile Money ou par carte,
+        et la barrière s'ouvre automatiquement à chaque passage grâce à votre plaque.
+      </p>
+      <div class="hero-actions">
+        <a href="/register.html" class="btn btn-amber">Créer mon abonnement</a>
+        <a href="#plans" class="btn btn-outline">Voir les forfaits</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="plans">
+    <div class="container">
+      <h2 class="section-title">Nos forfaits</h2>
+      <p class="section-sub">Tarifs en FCFA. Le prix varie selon le type de véhicule.</p>
+      <div class="plans-grid" id="plansGrid">
+        <div class="empty-state"><div class="icon">⏳</div>Chargement des forfaits…</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" style="background:white; border-top:1px solid var(--border); border-bottom:1px solid var(--border);">
+    <div class="container">
+      <h2 class="section-title">Comment ça marche</h2>
+      <div class="plans-grid">
+        <div class="card">
+          <h3 style="margin-top:0;">1. Inscrivez votre véhicule</h3>
+          <p style="color:var(--ink-soft);">Créez votre compte avec votre plaque d'immatriculation et votre numéro de téléphone.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0;">2. Payez en ligne</h3>
+          <p style="color:var(--ink-soft);">Mobile Money (MTN, Moov) ou carte bancaire, via une transaction sécurisée Kkiapay.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0;">3. Roulez sans arrêt</h3>
+          <p style="color:var(--ink-soft);">La barrière reconnaît votre plaque et s'ouvre automatiquement, tant que votre abonnement est actif.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    Péage Bénin — Plateforme d'abonnement au télépéage
+  </footer>
+
+  <script src="/js/common.js"></script>
+  <script>
+    (async function loadPlans() {
+      const grid = document.getElementById('plansGrid');
+      try {
+        const res = await fetch('/api/subscriptions/plans');
+        const data = await res.json();
+        if (!data.success || !data.plans.length) {
+          grid.innerHTML = '<div class="empty-state">Aucun forfait disponible pour le moment.</div>';
+          return;
+        }
+        grid.innerHTML = data.plans.map((p, i) => `
+          <div class="plan-card ${p.code === 'quarterly' ? 'featured' : ''}">
+            <div class="plan-name">${p.label}</div>
+            <div class="plan-price">${p.price_car.toLocaleString('fr-FR')} <small>FCFA / voiture</small></div>
+            <div class="plan-duration">${p.duration_days} jours • Moto ${p.price_moto.toLocaleString('fr-FR')} FCFA • Poids lourd ${p.price_truck.toLocaleString('fr-FR')} FCFA</div>
+            <a href="/register.html" class="btn btn-navy btn-block">Choisir ce forfait</a>
+          </div>
+        `).join('');
+      } catch (err) {
+        grid.innerHTML = '<div class="empty-state">Impossible de charger les forfaits.</div>';
+      }
+    })();
+
+    // Adapte le menu si déjà connecté
+    (async function checkSession() {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          const nav = document.getElementById('navAuth');
+          if (data.role === 'admin') {
+            nav.innerHTML = `<a href="/admin-dashboard.html" class="btn-primary">Espace admin</a>`;
+          } else {
+            nav.innerHTML = `<a href="/dashboard.html" class="btn-primary">Mon espace</a>`;
+          }
+        }
+      } catch (e) {}
+    })();
+  </script>
+</body>
+</html>

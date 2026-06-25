@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mon espace — Péage Bénin</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="page">
+  <div class="barrier-stripe"></div>
+  <header class="topbar">
+    <div class="container">
+      <a href="/" class="brand"><span class="brand-badge">⛊</span> Péage Bénin</a>
+      <nav class="topnav">
+        <span id="welcomeName" style="font-weight:600; padding-right:6px;"></span>
+        <button onclick="logout()">Déconnexion</button>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container" style="padding-top:36px; padding-bottom:48px;">
+    <h1 class="section-title">Mon espace abonné</h1>
+
+    <div class="card" style="margin-bottom:28px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px;">
+        <div>
+          <h3 style="margin:0 0 6px;">Mes véhicules</h3>
+          <div id="vehiclesList" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('addVehicleForm').classList.toggle('show-block')">+ Ajouter un véhicule</button>
+      </div>
+      <form id="addVehicleForm" style="display:none; margin-top:18px; padding-top:18px; border-top:1px solid var(--border);">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Plaque d'immatriculation</label>
+            <input type="text" id="newPlate" required placeholder="Ex : AB-1234-CD" style="text-transform:uppercase;">
+          </div>
+          <div class="form-group">
+            <label>Type de véhicule</label>
+            <select id="newVehicleType">
+              <option value="car">Voiture</option>
+              <option value="truck">Poids lourd</option>
+              <option value="moto">Moto</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-navy btn-sm">Enregistrer le véhicule</button>
+      </form>
+    </div>
+
+    <div class="card" style="margin-bottom:28px;">
+      <h3 style="margin-top:0;">Souscrire un nouvel abonnement</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Véhicule</label>
+          <select id="subVehicle"></select>
+        </div>
+        <div class="form-group">
+          <label>Forfait</label>
+          <select id="subPlan"></select>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; flex-wrap:wrap; gap:12px;">
+        <div style="font-family:'Archivo Black', sans-serif; font-size:1.4rem; color:var(--navy);" id="subAmount">—</div>
+        <button class="btn btn-amber" id="payBtn">Payer et activer</button>
+      </div>
+    </div>
+
+    <h2 class="section-title" style="font-size:1.3rem;">Mes abonnements</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Véhicule</th><th>Forfait</th><th>Début</th><th>Fin</th><th>Statut</th></tr>
+        </thead>
+        <tbody id="subsTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer class="footer">Péage Bénin — Plateforme d'abonnement au télépéage</footer>
+
+  <!-- SDK Kkiapay (widget de paiement) -->
+  <script src="https://cdn.kkiapay.me/k.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    let vehicles = [];
+    let plans = [];
+    let kkiapayConfig = null;
+    let currentPaymentId = null;
+
+    async function loadAll() {
+      const me = await (await fetch('/api/auth/me')).json();
+      if (!me.success) { window.location.href = '/login.html'; return; }
+      document.getElementById('welcomeName').textContent = me.name;
+
+      const [vRes, pRes, sRes, kRes] = await Promise.all([
+        fetch('/api/subscriptions/my-vehicles').then(r => r.json()),
+        fetch('/api/subscriptions/plans').then(r => r.json()),
+        fetch('/api/subscriptions/my-subscriptions').then(r => r.json()),
+        fetch('/api/payments/config').then(r => r.json())
+      ]);
+
+      vehicles = vRes.vehicles || [];
+      plans = pRes.plans || [];
+      kkiapayConfig = kRes;
+
+      renderVehicles();
+      renderSubSelectors();
+      renderSubscriptions(sRes.subscriptions || []);
+    }
+
+    function renderVehicles() {
+      const el = document.getElementById('vehiclesList');
+      if (!vehicles.length) {
+        el.innerHTML = '<span style="color:var(--ink-soft);">Aucun véhicule enregistré.</span>';
+        return;
+      }
+      el.innerHTML = vehicles.map(v =>
+        `<span class="vehicle-chip ${v.vehicle_type}">${v.plate}</span>`
+      ).join('');
+    }
+
+    function renderSubSelectors() {
+      const vSel = document.getElementById('subVehicle');
+      const pSel = document.getElementById('subPlan');
+      vSel.innerHTML = vehicles.map(v => `<option value="${v.id}" data-type="${v.vehicle_type}">${v.plate} (${labelType(v.vehicle_type)})</option>`).join('');
+      pSel.innerHTML = plans.map(p => `<option value="${p.code}">${p.label}</option>`).join('');
+      updateAmount();
+      vSel.addEventListener('change', updateAmount);
+      pSel.addEventListener('change', updateAmount);
+    }
+
+    function labelType(t) {
+      return { car: 'voiture', truck: 'poids lourd', moto: 'moto' }[t] || t;
+    }
+
+    function priceFor(plan, vehicleType) {
+      if (vehicleType === 'truck') return plan.price_truck;
+      if (vehicleType === 'moto') return plan.price_moto;
+      return plan.price_car;
+    }
+
+    function updateAmount() {
+      const vSel = document.getElementById('subVehicle');
+      const pSel = document.getElementById('subPlan');
+      const vType = vSel.selectedOptions[0]?.dataset.type;
+      const plan = plans.find(p => p.code === pSel.value);
+      const amountEl = document.getElementById('subAmount');
+      if (!plan || !vType) { amountEl.textContent = '—'; return; }
+      amountEl.textContent = fmtFCFA(priceFor(plan, vType));
+    }
+
+    function renderSubscriptions(subs) {
+      const tbody = document.getElementById('subsTableBody');
+      if (!subs.length) {
+        tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="icon">🚧</div>Aucun abonnement pour le moment.</div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = subs.map(s => `
+        <tr>
+          <td><span class="vehicle-chip ${s.vehicle_type}">${s.plate}</span></td>
+          <td>${s.plan_label}</td>
+          <td>${fmtDate(s.start_date)}</td>
+          <td>${fmtDate(s.end_date)}</td>
+          <td>${statusBadge(s.status)}</td>
+        </tr>
+      `).join('');
+    }
+
+    // --- Ajout d'un véhicule ---
+    document.getElementById('addVehicleForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const plate = document.getElementById('newPlate').value.trim().toUpperCase();
+      const vehicleType = document.getElementById('newVehicleType').value;
+      const res = await fetch('/api/subscriptions/vehicles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plate, vehicleType })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadAll();
+        document.getElementById('newPlate').value = '';
+      } else {
+        alert(data.message || "Erreur lors de l'ajout du véhicule");
+      }
+    });
+
+    // --- Souscription + paiement Kkiapay ---
+    document.getElementById('payBtn').addEventListener('click', async () => {
+      const vehicleId = document.getElementById('subVehicle').value;
+      const planCode = document.getElementById('subPlan').value;
+      if (!vehicleId || !planCode) return;
+
+      const payBtn = document.getElementById('payBtn');
+      payBtn.disabled = true;
+      payBtn.innerHTML = '<span class="spinner"></span> Préparation…';
+
+      try {
+        const res = await fetch('/api/subscriptions/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vehicleId, planCode })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          alert(data.message || "Erreur lors de la création de l'abonnement");
+          return;
+        }
+        currentPaymentId = data.paymentId;
+
+        // Ouverture du widget Kkiapay avec le montant exact calculé côté serveur
+        openKkiapayWidget({
+          amount: data.amount,
+          key: kkiapayConfig.publicKey,
+          sandbox: kkiapayConfig.sandbox,
+          position: 'center',
+          data: JSON.stringify({ paymentId: data.paymentId })
+        });
+      } catch (err) {
+        alert('Erreur réseau, veuillez réessayer.');
+      } finally {
+        payBtn.disabled = false;
+        payBtn.textContent = 'Payer et activer';
+      }
+    });
+
+    // Écoute le succès du widget Kkiapay, puis fait vérifier la transaction côté serveur
+    addSuccessListener(async (response) => {
+      const transactionId = response.transactionId;
+      try {
+        const res = await fetch('/api/payments/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentId: currentPaymentId, transactionId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert('Paiement confirmé ! Votre abonnement est actif.');
+        } else {
+          alert(data.message || 'Le paiement n\'a pas pu être confirmé.');
+        }
+      } catch (err) {
+        alert('Paiement reçu, mais la confirmation a échoué. Contactez le support si le problème persiste.');
+      } finally {
+        loadAll();
+      }
+    });
+
+    loadAll();
+  </script>
+  <style>#addVehicleForm.show-block { display: block !important; }</style>
+</body>
+</html>

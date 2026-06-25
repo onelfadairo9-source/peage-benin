@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connexion — Péage Bénin</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="page">
+  <div class="barrier-stripe"></div>
+  <header class="topbar">
+    <div class="container">
+      <a href="/" class="brand"><span class="brand-badge">⛊</span> Péage Bénin</a>
+      <nav class="topnav">
+        <a href="/register.html" class="btn-primary">S'abonner</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container-narrow" style="padding-top:60px; padding-bottom:60px;">
+    <h1 class="section-title" style="text-align:center;">Connexion</h1>
+    <p class="section-sub" style="text-align:center;">Accédez à votre espace abonné.</p>
+
+    <div class="form-card">
+      <div class="alert" id="alertBox"></div>
+      <form id="loginForm">
+        <div class="form-group">
+          <label>Téléphone</label>
+          <input type="tel" id="phone" required placeholder="Ex : 67000000">
+        </div>
+        <div class="form-group">
+          <label>Mot de passe</label>
+          <input type="password" id="password" required>
+        </div>
+        <button type="submit" class="btn btn-amber btn-block" id="submitBtn">Se connecter</button>
+      </form>
+      <div class="form-footer">Pas encore abonné ? <a href="/register.html">Créez votre compte</a></div>
+      <div class="form-footer"><a href="/admin-login.html">Connexion administrateur</a></div>
+    </div>
+  </div>
+
+  <footer class="footer">Péage Bénin — Plateforme d'abonnement au télépéage</footer>
+
+  <script src="/js/common.js"></script>
+  <script>
+    const form = document.getElementById('loginForm');
+    const alertBox = document.getElementById('alertBox');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert(alertBox);
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span> Connexion…';
+
+      const payload = {
+        phone: document.getElementById('phone').value.trim(),
+        password: document.getElementById('password').value
+      };
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.location.href = '/dashboard.html';
+        } else {
+          showAlert(alertBox, data.message || 'Identifiants incorrects');
+        }
+      } catch (err) {
+        showAlert(alertBox, 'Erreur réseau, veuillez réessayer.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Se connecter';
+      }
+    });
+  </script>
+</body>
+</html>

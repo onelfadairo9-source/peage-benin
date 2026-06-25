@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Créer mon abonnement — Péage Bénin</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="page">
+  <div class="barrier-stripe"></div>
+  <header class="topbar">
+    <div class="container">
+      <a href="/" class="brand"><span class="brand-badge">⛊</span> Péage Bénin</a>
+      <nav class="topnav">
+        <a href="/login.html">Se connecter</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container-narrow" style="padding-top:40px; padding-bottom:40px;">
+    <h1 class="section-title" style="text-align:center;">Créer mon compte</h1>
+    <p class="section-sub" style="text-align:center;">Renseignez vos informations et celles de votre véhicule.</p>
+
+    <div class="form-card">
+      <div class="alert" id="alertBox"></div>
+      <form id="registerForm">
+        <div class="form-group">
+          <label>Nom complet</label>
+          <input type="text" id="name" required placeholder="Ex : Adjovi Koffi">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Téléphone</label>
+            <input type="tel" id="phone" required placeholder="Ex : 67000000">
+          </div>
+          <div class="form-group">
+            <label>Email (optionnel)</label>
+            <input type="email" id="email" placeholder="vous@email.com">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Mot de passe</label>
+          <input type="password" id="password" required minlength="6" placeholder="6 caractères minimum">
+        </div>
+        <hr style="border:none; border-top:1px solid var(--border); margin:22px 0;">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Plaque d'immatriculation</label>
+            <input type="text" id="plate" required placeholder="Ex : AB-1234-CD" style="text-transform:uppercase;">
+          </div>
+          <div class="form-group">
+            <label>Type de véhicule</label>
+            <select id="vehicleType">
+              <option value="car">Voiture</option>
+              <option value="truck">Poids lourd</option>
+              <option value="moto">Moto</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-amber btn-block" id="submitBtn">Créer mon compte</button>
+      </form>
+      <div class="form-footer">Déjà abonné ? <a href="/login.html">Connectez-vous</a></div>
+    </div>
+  </div>
+
+  <footer class="footer">Péage Bénin — Plateforme d'abonnement au télépéage</footer>
+
+  <script src="/js/common.js"></script>
+  <script>
+    const form = document.getElementById('registerForm');
+    const alertBox = document.getElementById('alertBox');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert(alertBox);
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span> Création…';
+
+      const payload = {
+        name: document.getElementById('name').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        password: document.getElementById('password').value,
+        plate: document.getElementById('plate').value.trim().toUpperCase(),
+        vehicleType: document.getElementById('vehicleType').value
+      };
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.location.href = '/dashboard.html';
+        } else {
+          showAlert(alertBox, data.message || 'Erreur lors de la création du compte');
+        }
+      } catch (err) {
+        showAlert(alertBox, 'Erreur réseau, veuillez réessayer.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Créer mon compte';
+      }
+    });
+  </script>
+</body>
+</html>

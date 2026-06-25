@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Administration — Péage Bénin</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="page">
+  <div class="barrier-stripe"></div>
+  <header class="topbar">
+    <div class="container">
+      <a href="/" class="brand"><span class="brand-badge">⛊</span> Péage Bénin <span style="color:var(--amber); font-size:0.75rem; font-weight:600; margin-left:4px;">ADMIN</span></a>
+      <nav class="topnav">
+        <span id="welcomeName" style="font-weight:600; padding-right:6px;"></span>
+        <button onclick="logout()">Déconnexion</button>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container" style="padding-top:32px; padding-bottom:48px;">
+    <h1 class="section-title">Tableau de bord</h1>
+
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="subs">Abonnements</button>
+      <button class="tab-btn" data-tab="users">Clients</button>
+      <button class="tab-btn" data-tab="payments">Paiements</button>
+      <button class="tab-btn" data-tab="passages">Passages barrière</button>
+      <button class="tab-btn" data-tab="plans">Forfaits</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-subs">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Client</th><th>Téléphone</th><th>Plaque</th><th>Forfait</th><th>Fin</th><th>Statut</th><th>Action</th></tr></thead>
+          <tbody id="subsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-users">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Nom</th><th>Téléphone</th><th>Email</th><th>Véhicules</th><th>Inscrit le</th></tr></thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-payments">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Client</th><th>Montant</th><th>Méthode</th><th>Transaction Kkiapay</th><th>Statut</th><th>Date</th></tr></thead>
+          <tbody id="paymentsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-passages">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Plaque</th><th>Barrière</th><th>Résultat</th><th>Date</th></tr></thead>
+          <tbody id="passagesBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-plans">
+      <div class="plans-grid" id="plansEditGrid"></div>
+    </div>
+  </div>
+
+  <footer class="footer">Péage Bénin — Espace administrateur</footer>
+
+  <script src="/js/common.js"></script>
+  <script>
+    // --- Navigation par onglets ---
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    async function init() {
+      const me = await (await fetch('/api/auth/me')).json();
+      if (!me.success || me.role !== 'admin') { window.location.href = '/admin-login.html'; return; }
+      document.getElementById('welcomeName').textContent = me.name;
+
+      await Promise.all([loadStats(), loadSubs(), loadUsers(), loadPayments(), loadPassages(), loadPlans()]);
+    }
+
+    async function loadStats() {
+      const { stats } = await (await fetch('/api/admin/stats')).json();
+      document.getElementById('statsGrid').innerHTML = `
+        <div class="stat-card"><div class="stat-label">Clients</div><div class="stat-value">${stats.totalUsers}</div></div>
+        <div class="stat-card"><div class="stat-label">Véhicules</div><div class="stat-value">${stats.totalVehicles}</div></div>
+        <div class="stat-card"><div class="stat-label">Abonnements actifs</div><div class="stat-value green">${stats.activeSubscriptions}</div></div>
+        <div class="stat-card"><div class="stat-label">Revenu total</div><div class="stat-value amber">${fmtFCFA(stats.revenueTotal)}</div></div>
+        <div class="stat-card"><div class="stat-label">Revenu ce mois</div><div class="stat-value amber">${fmtFCFA(stats.revenueThisMonth)}</div></div>
+        <div class="stat-card"><div class="stat-label">Passages aujourd'hui</div><div class="stat-value">${stats.passagesToday}</div></div>
+        <div class="stat-card"><div class="stat-label">Refus aujourd'hui</div><div class="stat-value" style="color:var(--red);">${stats.passagesDeniedToday}</div></div>
+      `;
+    }
+
+    async function loadSubs() {
+      const { subscriptions } = await (await fetch('/api/admin/subscriptions')).json();
+      const tbody = document.getElementById('subsBody');
+      if (!subscriptions.length) {
+        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">Aucun abonnement enregistré.</div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = subscriptions.map(s => `
+        <tr>
+          <td>${s.user_name}</td>
+          <td>${s.phone}</td>
+          <td><span class="vehicle-chip ${s.vehicle_type}">${s.plate}</span></td>
+          <td>${s.plan_label}</td>
+          <td>${fmtDate(s.end_date)}</td>
+          <td>${statusBadge(s.status)}</td>
+          <td>
+            ${s.status === 'active'
+              ? `<button class="btn btn-danger btn-sm" onclick="setSubStatus(${s.id}, 'cancelled')">Annuler</button>`
+              : `<button class="btn btn-outline btn-sm" onclick="setSubStatus(${s.id}, 'active')">Activer</button>`}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function setSubStatus(id, status) {
+      await fetch(`/api/admin/subscriptions/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      loadSubs();
+      loadStats();
+    }
+
+    async function loadUsers() {
+      const { users } = await (await fetch('/api/admin/users')).json();
+      const tbody = document.getElementById('usersBody');
+      if (!users.length) {
+        tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state">Aucun client inscrit.</div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = users.map(u => `
+        <tr>
+          <td>${u.name}</td>
+          <td>${u.phone}</td>
+          <td>${u.email || '—'}</td>
+          <td>${u.vehicles.map(v => `<span class="vehicle-chip ${v.vehicle_type}">${v.plate}</span>`).join(' ') || '—'}</td>
+          <td>${fmtDate(u.created_at)}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadPayments() {
+      const { payments } = await (await fetch('/api/admin/payments')).json();
+      const tbody = document.getElementById('paymentsBody');
+      if (!payments.length) {
+        tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">Aucun paiement enregistré.</div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = payments.map(p => `
+        <tr>
+          <td>${p.user_name}</td>
+          <td>${fmtFCFA(p.amount)}</td>
+          <td>${p.method}</td>
+          <td style="font-size:0.78rem; color:var(--ink-soft);">${p.kkiapay_transaction_id || '—'}</td>
+          <td>${statusBadge(p.status)}</td>
+          <td>${fmtDate(p.created_at)}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadPassages() {
+      const { passages } = await (await fetch('/api/admin/passages')).json();
+      const tbody = document.getElementById('passagesBody');
+      if (!passages.length) {
+        tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state">Aucun passage enregistré.</div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = passages.map(p => `
+        <tr>
+          <td>${p.plate}</td>
+          <td>${p.gate}</td>
+          <td>${p.allowed ? '<span class="badge badge-active">Autorisé</span>' : '<span class="badge badge-expired">Refusé</span>'}</td>
+          <td>${fmtDate(p.created_at)}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadPlans() {
+      const { plans } = await (await fetch('/api/admin/plans')).json();
+      const grid = document.getElementById('plansEditGrid');
+      grid.innerHTML = plans.map(p => `
+        <div class="plan-card">
+          <div class="plan-name">${p.label}</div>
+          <div class="plan-duration">${p.duration_days} jours</div>
+          <div class="form-group" style="text-align:left; margin-top:14px;">
+            <label>Prix voiture</label>
+            <input type="number" id="price_car_${p.id}" value="${p.price_car}">
+          </div>
+          <div class="form-group" style="text-align:left;">
+            <label>Prix poids lourd</label>
+            <input type="number" id="price_truck_${p.id}" value="${p.price_truck}">
+          </div>
+          <div class="form-group" style="text-align:left;">
+            <label>Prix moto</label>
+            <input type="number" id="price_moto_${p.id}" value="${p.price_moto}">
+          </div>
+          <button class="btn btn-navy btn-block btn-sm" onclick="savePlan(${p.id})">Enregistrer</button>
+        </div>
+      `).join('');
+    }
+
+    async function savePlan(id) {
+      const price_car = Number(document.getElementById(`price_car_${id}`).value);
+      const price_truck = Number(document.getElementById(`price_truck_${id}`).value);
+      const price_moto = Number(document.getElementById(`price_moto_${id}`).value);
+      await fetch(`/api/admin/plans/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ price_car, price_truck, price_moto, active: true })
+      });
+      alert('Forfait mis à jour.');
+    }
+
+    init();
+  </script>
+</body>
+</html>
