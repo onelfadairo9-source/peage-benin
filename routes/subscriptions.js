@@ -7,7 +7,6 @@ const router = express.Router();
 
 function priceFor(plan, vehicleType) {
   if (vehicleType === 'truck') return plan.price_truck;
-  if (vehicleType === 'moto') return plan.price_moto;
   return plan.price_car;
 }
 

@@ -40,7 +40,6 @@
             <select id="newVehicleType">
               <option value="car">Voiture</option>
               <option value="truck">Poids lourd</option>
-              <option value="moto">Moto</option>
             </select>
           </div>
         </div>
@@ -131,12 +130,11 @@
     }
 
     function labelType(t) {
-      return { car: 'voiture', truck: 'poids lourd', moto: 'moto' }[t] || t;
+     return { car: 'voiture', truck: 'poids lourd' }[t] || t;
     }
 
     function priceFor(plan, vehicleType) {
       if (vehicleType === 'truck') return plan.price_truck;
-      if (vehicleType === 'moto') return plan.price_moto;
       return plan.price_car;
     }
 
